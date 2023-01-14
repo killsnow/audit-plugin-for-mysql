@@ -273,11 +273,12 @@ static MYSQL_SYSVAR_STR(excl_users, excl_users, PLUGIN_VAR_RQCMDARG,
 #define EVENT_QUERY_DML 8
 #define EVENT_QUERY_DCL 16
 #define EVENT_QUERY_DML_NO_SELECT 32
+#define EVENT_QUERY_DML_NO_INSERT 64
 
 static const char *event_names[]=
 {
   "CONNECT", "QUERY", "QUERY_DDL", "QUERY_DML", "QUERY_DCL",
-  "QUERY_DML_NO_SELECT", NULL
+  "QUERY_DML_NO_SELECT","QUERY_DML_NO_INSERT", NULL
 };
 static TYPELIB events_typelib=
 {
@@ -285,7 +286,7 @@ static TYPELIB events_typelib=
 };
 static MYSQL_SYSVAR_SET(events, events, PLUGIN_VAR_RQCMDARG,
        "Specifies the set of events to monitor. Can be CONNECT, QUERY,"
-           " QUERY_DDL, QUERY_DML, QUERY_DML_NO_SELECT, QUERY_DCL.",
+           " QUERY_DDL, QUERY_DML, QUERY_DML_NO_SELECT, QUERY_DML_NO_INSERT, QUERY_DCL.",
        NULL, NULL, 0, &events_typelib);
 #ifdef DO_SYSLOG
 #define OUTPUT_SYSLOG 0
@@ -785,7 +786,6 @@ struct sa_keyword dml_keywords[]=
   {0, NULL, 0, SA_SQLCOM_DML}
 };
 
-
 struct sa_keyword dml_no_select_keywords[]=
 {
   {2, "DO", 0, SA_SQLCOM_DML},
@@ -794,6 +794,19 @@ struct sa_keyword dml_no_select_keywords[]=
   {4, "LOAD", &xml_word, SA_SQLCOM_DML},
   {6, "DELETE", 0, SA_SQLCOM_DML},
   {6, "INSERT", 0, SA_SQLCOM_DML},
+  {6, "UPDATE", 0, SA_SQLCOM_DML},
+  {7, "HANDLER", 0, SA_SQLCOM_DML},
+  {7, "REPLACE", 0, SA_SQLCOM_DML},
+  {0, NULL, 0, SA_SQLCOM_DML}
+};
+
+struct sa_keyword dml_no_insert_keywords[]=
+{
+  {2, "DO", 0, SA_SQLCOM_DML},
+  {4, "CALL", 0, SA_SQLCOM_DML},
+  {4, "LOAD", &data_word, SA_SQLCOM_DML},
+  {4, "LOAD", &xml_word, SA_SQLCOM_DML},
+  {6, "DELETE", 0, SA_SQLCOM_DML},
   {6, "UPDATE", 0, SA_SQLCOM_DML},
   {7, "HANDLER", 0, SA_SQLCOM_DML},
   {7, "REPLACE", 0, SA_SQLCOM_DML},
@@ -825,7 +838,7 @@ struct sa_keyword passwd_keywords[]=
   {0, NULL, 0, SA_SQLCOM_NOTHING}
 };
 
-#define MAX_KEYWORD 9
+#define MAX_KEYWORD 10
 
 
 static void error_header()
@@ -1504,7 +1517,7 @@ static int filter_query_type(const char *query, struct sa_keyword *kwd)
       if (query[2] == '!')
       {
         query+= 3;
-        while (*query >= '0' && *query <= '9')
+        while (*query >= '0' && *query <= '10')
           query++;
         continue;
       }
@@ -1629,6 +1642,11 @@ static int log_statement_ex(const struct connection_info *cn,
     if (events & EVENT_QUERY_DML_NO_SELECT)
     {
       if (filter_query_type(query, dml_no_select_keywords))
+        goto do_log_query;
+    }
+    if (events & EVENT_QUERY_DML_NO_INSERT)
+    {
+      if (filter_query_type(query, dml_no_insert_keywords))
         goto do_log_query;
     }
     if (events & EVENT_QUERY_DCL)
